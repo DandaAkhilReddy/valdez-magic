@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Valdez Magic | Scan Your Gym → Get Your Program</title>
+<meta name="description" content="Record a video of your gym. Valdez identifies every machine and builds your personalized workout program — sets, reps, muscles, and the why. Ask Valdez anything." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect x='4' y='4' width='92' height='92' rx='22' fill='%230d9488'/%3E%3Cpath d='M50 24v52M24 50h52' stroke='white' stroke-width='14' stroke-linecap='round'/%3E%3Cpath d='M26 50h12l6-12 8 24 6-12h16' stroke='%230d9488' stroke-width='4.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+<link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+<header>
+  <div class="brand">
+    <svg viewBox="0 0 100 100" width="46" height="46" aria-label="Valdez logo">
+      <rect x="4" y="4" width="92" height="92" rx="22" fill="#0d9488"/>
+      <path d="M50 24v52M24 50h52" stroke="#fff" stroke-width="14" stroke-linecap="round"/>
+      <path d="M26 50h12l6-12 8 24 6-12h16" stroke="#0d9488" stroke-width="4.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <div>
+      <h1>Valdez <span>Magic</span></h1>
+      <p class="tag">Scan your gym · Get your program · Train for life</p>
+    </div>
+  </div>
+  <div id="user-chip" class="hidden">
+    <span id="user-email"></span>
+    <button id="btn-logout" class="mini">Log out</button>
+  </div>
+</header>
+
+<!-- ============ LOGIN ============ -->
+<section class="card auth-card" id="login-panel">
+  <h2>Sign in</h2>
+  <div id="step-email">
+    <p class="muted">Your email — we'll send a 6-digit code. No passwords, ever.</p>
+    <div class="authrow">
+      <input type="email" id="login-email" placeholder="you@example.com" autocomplete="email" />
+      <button id="btn-send-otp" class="primary">Send code</button>
+    </div>
+  </div>
+  <div id="step-otp" class="hidden">
+    <p class="muted">Code sent to <strong id="otp-email-label"></strong></p>
+    <div class="authrow">
+      <input type="text" id="login-otp" inputmode="numeric" maxlength="6" placeholder="123456" />
+      <button id="btn-verify-otp" class="primary">Verify</button>
+    </div>
+    <p class="muted"><a href="#" id="btn-back-email">Use a different email</a></p>
+  </div>
+  <p id="auth-msg" class="muted"></p>
+</section>
+
+<main id="app" class="hidden">
+  <!-- ============ STEP 1: SCAN ============ -->
+  <section class="card">
+    <h2><span class="stepnum">1</span> Scan your gym</h2>
+    <p class="muted">Walk through your gym and record a short video (10–30s), or upload one.
+       Valdez will identify every piece of equipment it sees.</p>
+    <div class="scanrow">
+      <label class="filebtn primary">
+        🎥 Upload / record gym video
+        <input type="file" id="video-input" accept="video/*" capture="environment" hidden />
+      </label>
+      <button id="btn-skip-scan" class="ghost">Skip — I'll pick equipment manually</button>
+    </div>
+    <div id="scan-status" class="muted"></div>
+    <video id="scan-preview" class="hidden" controls playsinline></video>
+  </section>
+
+  <!-- ============ STEP 2: EQUIPMENT ============ -->
+  <section class="card hidden" id="equip-card">
+    <h2><span class="stepnum">2</span> Your equipment <span id="detect-badge" class="badge hidden"></span></h2>
+    <p class="muted">Confirm what Valdez found — tap to add or remove anything.</p>
+    <div id="equip-grid" class="equip-grid"></div>
+  </section>
+
+  <!-- ============ STEP 3: OPTIONS ============ -->
+  <section class="card hidden" id="options-card">
+    <h2><span class="stepnum">3</span> Your program options</h2>
+    <div class="optgrid">
+      <label>Days per week
+        <select id="opt-days">
+          <option value="3">3 days — busy life</option>
+          <option value="4" selected>4 days — balanced</option>
+          <option value="5">5 days — committed</option>
+          <option value="6">6 days — all in</option>
+        </select>
+      </label>
+      <label>Goal
+        <select id="opt-goal">
+          <option value="longevity" selected>Longevity & health</option>
+          <option value="strength">Strength</option>
+          <option value="fatloss">Fat loss</option>
+        </select>
+      </label>
+      <label>Session length
+        <select id="opt-minutes">
+          <option value="30">30 minutes</option>
+          <option value="45" selected>45 minutes</option>
+          <option value="60">60 minutes</option>
+        </select>
+      </label>
+    </div>
+    <button id="btn-generate" class="primary big">⚡ Build My Program</button>
+  </section>
+
+  <!-- ============ PLAN ============ -->
+  <section class="card hidden" id="plan-card">
+    <h2><span class="stepnum">4</span> Your weekly program</h2>
+    <div id="plan-summary"></div>
+    <div id="day-tabs" class="day-tabs"></div>
+    <div id="day-detail"></div>
+    <div id="coach-notes"></div>
+  </section>
+</main>
+
+<!-- ============ VALDEZ CHAT ============ -->
+<button id="chat-fab" class="hidden" aria-label="Ask Valdez">
+  <svg viewBox="0 0 100 100" width="26" height="26"><rect x="4" y="4" width="92" height="92" rx="22" fill="#fff" opacity=".18"/><path d="M50 24v52M24 50h52" stroke="#fff" stroke-width="14" stroke-linecap="round"/></svg>
+  Ask Valdez
+</button>
+<div id="chat-panel" class="hidden">
+  <div class="chat-head">
+    <strong>🩺 Valdez</strong> <span class="muted">your AI coach</span>
+    <button id="chat-close" class="mini">×</button>
+  </div>
+  <div id="chat-log"></div>
+  <div class="chat-inputrow">
+    <input id="chat-input" placeholder="Ask about any exercise, plan, food…" />
+    <button id="chat-send" class="primary">➤</button>
+  </div>
+</div>
+
+<footer>
+  <p>Valdez Magic by <a href="https://dandaakhilreddy.com" target="_blank">Akhil Reddy Danda</a>
+     · <a href="https://github.com/DandaAkhilReddy/valdez-magic" target="_blank">GitHub</a>
+     · Not medical advice — train smart.</p>
+</footer>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
