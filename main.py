@@ -55,6 +55,7 @@ AZ_OAI_DEPLOYMENT = os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-4o")
 AZURE_CONN = os.environ.get("AZURE_STORAGE_CONNECTION_STRING", "")
 AZURE_CONTAINER = os.environ.get("AZURE_BLOB_CONTAINER", "gymscans")
 
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "").lower()
 SESSION_DAYS = 90
 OTP_TTL_MIN = 10
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -463,6 +464,37 @@ def chat(body: ChatIn, user=Depends(current_user)):
         except Exception:
             pass
     return {"reply": _fallback_coach(msgs[-1]["content"], context), "ai": False}
+
+
+# ---------------------------------------------------------------- admin (email set via env only)
+@app.get("/api/admin/stats")
+def admin_stats(user=Depends(current_user)):
+    if not ADMIN_EMAIL or user["email"].lower() != ADMIN_EMAIL:
+        raise HTTPException(403, "Not authorized")
+    with db() as conn:
+        users = [dict(r) for r in conn.execute(
+            "SELECT email, created_at FROM users ORDER BY created_at DESC LIMIT 200").fetchall()]
+        gyms = conn.execute("SELECT COUNT(*) FROM gyms").fetchone()[0]
+        plans = conn.execute("SELECT COUNT(*) FROM plans").fetchone()[0]
+    return {"total_users": len(users), "gyms_scanned": gyms, "plans_generated": plans,
+            "recent_users": users}
+
+
+@app.delete("/api/admin/users/{email}")
+def admin_delete_user(email: str, user=Depends(current_user)):
+    if not ADMIN_EMAIL or user["email"].lower() != ADMIN_EMAIL:
+        raise HTTPException(403, "Not authorized")
+    email = email.lower()
+    with db() as conn:
+        r = conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
+        if not r:
+            raise HTTPException(404, "No such user")
+        uid = r["id"]
+        conn.execute("DELETE FROM sessions WHERE user_id = ?", (uid,))
+        conn.execute("DELETE FROM gyms WHERE user_id = ?", (uid,))
+        conn.execute("DELETE FROM plans WHERE user_id = ?", (uid,))
+        conn.execute("DELETE FROM users WHERE id = ?", (uid,))
+    return {"deleted": email}
 
 
 # ---------------------------------------------------------------- misc
