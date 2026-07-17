@@ -252,6 +252,9 @@ def generate_plan(equipment: list[str], days: int = 4, goal: str = "longevity",
     for i, (title, cats) in enumerate(split):
         main = _pick(pool, cats, n_main - 1, used, rng)
         core = _pick(pool, ["core"], 1, used, rng)
+        if len(main) + len(core) < min(4, len(pool)):  # sparse gym: borrow from any category
+            extra = _pick(pool, None, min(4, len(pool)) - len(main) - len(core), used, rng)
+            main += [x for x in extra if x not in main and x not in core]
         cardio_needed = cats is None or "cardio" in (cats or [])
         block = main + core
         muscles: dict[str, int] = {}

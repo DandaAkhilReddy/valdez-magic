@@ -186,6 +186,7 @@ def verify_otp(body: OtpVerify):
             raise HTTPException(429, "Too many attempts — request a new code")
         if sha(body.code.strip()) != row["code_hash"]:
             conn.execute("UPDATE otps SET attempts = attempts + 1 WHERE email = ?", (email,))
+            conn.commit()  # persist the counter even though we raise next
             raise HTTPException(400, "Wrong code — try again")
         conn.execute("DELETE FROM otps WHERE email = ?", (email,))
         user = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
@@ -285,9 +286,11 @@ def scan(body: ScanIn, user=Depends(current_user)):
     if body.video_base64:
         b64 = body.video_base64.split(",")[-1]
         try:
-            raw = base64.b64decode(b64)
-        except Exception:
-            raise HTTPException(400, "Invalid video data")
+            raw = base64.b64decode(b64, validate=True)
+            if not raw:
+                raise ValueError("empty")
+        except Exception as exc:
+            raise HTTPException(400, "Invalid video data") from exc
         if len(raw) > 60_000_000:
             raise HTTPException(400, "Video too large (60MB max)")
         user_dir = os.path.join(VIDEO_DIR, user["id"])
