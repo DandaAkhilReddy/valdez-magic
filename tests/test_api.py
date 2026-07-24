@@ -239,3 +239,88 @@ def test_health(client):
     r = client.get("/api/health")
     assert r.status_code == 200
     assert r.json()["app"] == "Valdez Magic"
+
+
+# ---------------------------------------------------------------- LLM providers (Azure Foundry / Anthropic)
+def test_llm_available_detects_azure(monkeypatch):
+    monkeypatch.setattr(main, "ANTHROPIC_KEY", "")
+    monkeypatch.setattr(main, "AZ_OAI_ENDPOINT", "https://x.openai.azure.com")
+    monkeypatch.setattr(main, "AZ_OAI_KEY", "k")
+    assert main.llm_available() == "azure"
+
+
+def test_llm_available_prefers_anthropic(monkeypatch):
+    monkeypatch.setattr(main, "ANTHROPIC_KEY", "sk-ant")
+    monkeypatch.setattr(main, "AZ_OAI_ENDPOINT", "https://x.openai.azure.com")
+    monkeypatch.setattr(main, "AZ_OAI_KEY", "k")
+    assert main.llm_available() == "anthropic"
+
+
+def test_llm_available_none(monkeypatch):
+    monkeypatch.setattr(main, "ANTHROPIC_KEY", "")
+    monkeypatch.setattr(main, "AZ_OAI_ENDPOINT", "")
+    assert main.llm_available() == ""
+
+
+def test_azure_llm_request_shape(monkeypatch):
+    """Verify the Azure call builds a correct URL + payload without a real network hit."""
+    captured = {}
+
+    class FakeResp:
+        def read(self):
+            return jsonlib.dumps({"choices": [{"message": {"content": "hi from azure"}}]}).encode()
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    def fake_urlopen(req, timeout=0):
+        captured["url"] = req.full_url
+        captured["headers"] = {k.lower(): v for k, v in req.headers.items()}
+        captured["body"] = jsonlib.loads(req.data)
+        return FakeResp()
+
+    import json as jsonlib  # noqa
+    monkeypatch.setattr(main, "AZ_OAI_ENDPOINT", "https://areddy.openai.azure.com")
+    monkeypatch.setattr(main, "AZ_OAI_KEY", "test-key")
+    monkeypatch.setattr(main, "AZ_OAI_DEPLOYMENT", "gpt-4.1")
+    monkeypatch.setattr(main.urllib.request, "urlopen", fake_urlopen)
+    out = main._azure_oai([{"role": "user", "content": "hey"}], "system prompt")
+    assert out == "hi from azure"
+    assert "deployments/gpt-4.1/chat/completions" in captured["url"]
+    assert captured["headers"]["api-key"] == "test-key"
+    assert captured["body"]["messages"][0]["role"] == "system"
+
+
+def test_azure_vision_includes_images(monkeypatch):
+    captured = {}
+
+    class FakeResp:
+        def read(self):
+            import json as j
+            return j.dumps({"choices": [{"message": {"content": '["dumbbells"]'}}]}).encode()
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    def fake_urlopen(req, timeout=0):
+        import json as j
+        captured["body"] = j.loads(req.data)
+        return FakeResp()
+
+    monkeypatch.setattr(main, "AZ_OAI_ENDPOINT", "https://areddy.openai.azure.com")
+    monkeypatch.setattr(main, "AZ_OAI_KEY", "k")
+    monkeypatch.setattr(main.urllib.request, "urlopen", fake_urlopen)
+    main._azure_oai([{"role": "user", "content": "find equipment"}], "sys",
+                    images_b64=["ZmFrZWpwZWc="])
+    parts = captured["body"]["messages"][-1]["content"]
+    assert any(p.get("type") == "image_url" for p in parts)
+
+
+def test_scan_detection_via_azure_provider(client, login, fake_frames, monkeypatch):
+    """End-to-end: Azure provider selected, vision returns equipment, scan uses it."""
+    monkeypatch.setattr(main, "ANTHROPIC_KEY", "")
+    monkeypatch.setattr(main, "AZ_OAI_ENDPOINT", "https://areddy.openai.azure.com")
+    monkeypatch.setattr(main, "AZ_OAI_KEY", "k")
+    monkeypatch.setattr(main, "_azure_oai", lambda *a, **k: '["dumbbells","leg_press","treadmill"]')
+    h, _ = login()
+    body = client.post("/api/scan", json={"frames": fake_frames}, headers=h).json()
+    assert body["ai_used"] is True
+    assert sorted(body["detected"]) == ["dumbbells", "leg_press", "treadmill"]
